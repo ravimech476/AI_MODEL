@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>How to Use the Models — Team Guide</title>
+<style>
+  body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#f4f7fb;color:#222;line-height:1.5}
+  .wrap{max-width:920px;margin:0 auto;padding:30px}
+  h1.title{color:#1F4E79;text-align:center;font-size:34px;margin:6px 0}
+  .sub{color:#555;text-align:center;font-size:18px;margin-bottom:24px}
+  h2{color:#1F4E79;margin-top:34px;background:#e7eff7;padding:10px 14px;border-radius:6px;font-size:20px}
+  h3{color:#2E6CA4;margin-top:20px;font-size:17px}
+  p{font-size:15px}
+  table{border-collapse:collapse;width:100%;margin:12px 0;background:#fff;box-shadow:0 1px 3px #0001}
+  th{background:#1F4E79;color:#fff;padding:9px 12px;text-align:left;font-size:14px}
+  td{padding:8px 12px;border-bottom:1px solid #eee;font-size:14px}
+  tr:nth-child(even) td{background:#f3f7fc}
+  pre{background:#1e1e1e;color:#d4d4d4;padding:14px 16px;border-radius:6px;overflow-x:auto;
+      font-family:Consolas,monospace;font-size:13.5px;margin:12px 0}
+  .plain{color:#0a7d4d;font-style:italic;font-size:14px;margin:4px 0 14px 4px}
+  .key{background:#fff8e1;border-left:4px solid #f0c000;padding:12px 16px;margin:16px 0;font-size:15px;border-radius:4px}
+  ul{font-size:15px} li{margin:6px 0}
+  .takeaway{background:#eef4fb;border-left:4px solid #2E6CA4;padding:12px 16px;border-radius:4px;
+            font-style:italic;color:#1F4E79;font-size:15px;margin-top:16px}
+  .foot{color:#888;font-size:12px;margin-top:30px;border-top:1px solid #ddd;padding-top:12px;text-align:center}
+</style></head>
+<body><div class="wrap">
+
+<h1 class="title">🌽 How to Use the Models with Different Inputs</h1>
+<div class="sub">A Simple Team Guide — Corn Disease AI</div>
+
+<h2>1. Think of the Model Like a Juice Machine 🥤</h2>
+<p>A juice machine: you put in fruit, it gives you juice.</p>
+<pre>You put in FRUIT   →   machine works   →   JUICE comes out</pre>
+<p>Our model works the same way:</p>
+<pre>You put in DRONE DATA   →   model works   →   DISEASE PREDICTION</pre>
+<p><b>"Using the model with different inputs" simply means putting in different data.</b></p>
+
+<h2>2. The 4 Things You Can Change</h2>
+<p>To try different inputs, change one (or more) of these:</p>
+<table>
+<tr><th>Change this</th><th>Example</th><th>Like…</th></tr>
+<tr><td><b>1. The file</b></td><td>Use a different Excel</td><td>different fruit</td></tr>
+<tr><td><b>2. The target</b></td><td>Predict severity OR stroma count</td><td>what juice you want</td></tr>
+<tr><td><b>3. The columns</b></td><td>Include or exclude Fungi / DAP</td><td>which ingredients</td></tr>
+<tr><td><b>4. The model</b></td><td>XGBoost or Random Forest</td><td>which machine</td></tr>
+</table>
+
+<h2>3. Where Everything Lives</h2>
+<p><b>All the model code is in ONE file: <code>ml_core.py</code></b></p>
+<p>Think of <code>ml_core.py</code> as the juice machine's <b>motor</b>. You do not rebuild the motor —
+you just press buttons (call its functions).</p>
+
+<h2>4. The 3 Buttons (Functions) You Use</h2>
+<h3>Button 1 — TRAIN (teach the model)</h3>
+<pre>results = ml.train_all_variants(df, target="SEV_Mean")</pre>
+<div class="plain">In plain words: "Learn from this data, predict this column."</div>
+<h3>Button 2 — PREDICT (use the model)</h3>
+<pre>predictions = ml.predict(model, new_data)</pre>
+<div class="plain">In plain words: "Look at this new data, tell me the disease."</div>
+<h3>Button 3 — EXPLAIN (statistics / LMM)</h3>
+<pre>table = ml.fit_lmm(df, target="SEV_Mean")</pre>
+<div class="plain">In plain words: "Tell me which signals matter, with proof."</div>
+
+<h2>5. A Super-Simple Example (the whole thing)</h2>
+<pre>import ml_core as ml          # turn on the machine
+import pandas as pd
+
+# 1. Put in the data (INPUT)
+df = pd.read_excel("my_file.xlsx")
+
+# 2. Press the TRAIN button — tell it what to predict
+results = ml.train_all_variants(df, target="SEV_Mean")
+
+# 3. See the result
+print(ml.comparison_table(results))</pre>
+<p>To try a <b>DIFFERENT input</b>, change just ONE line:</p>
+<pre>df = pd.read_excel("DIFFERENT_file.xlsx")              # different file
+# OR
+results = ml.train_all_variants(df, target="NEW_SC_Mean")   # different target</pre>
+
+<h2>6. The Key Message</h2>
+<div class="key"><b>You do NOT write new code.</b> You change the INPUT (file, target, columns) and press the
+same buttons (functions). The machine handles the rest.</div>
+
+<h2>7. How to Learn It</h2>
+<p>Open the file <code>use_models_examples.py</code>. It has ready examples. Learn by doing:</p>
+<ul>
+<li><b>RUN</b> it once — see it work.</li>
+<li><b>CHANGE</b> one thing — e.g. the target column.</li>
+<li><b>RUN</b> it again — see what changes.</li>
+<li>Repeat: change the file, the columns, the model.</li>
+</ul>
+
+<h2>8. Summary</h2>
+<p>All model logic is in <code>ml_core.py</code>. You use 3 functions —
+<code>train_all_variants()</code>, <code>predict()</code>, <code>fit_lmm()</code> — and change the
+<b>file, target, columns, or model</b> to try different inputs. You never rewrite the model; you just feed
+it different data. The tutorial file <code>use_models_examples.py</code> lets you learn by editing and re-running.</p>
+<div class="takeaway">One-line takeaway: Same machine, different fruit. Change the input, press the same buttons.</div>
+
+<div class="foot">Corn Disease AI — Team Guide · companion file: use_models_examples.py</div>
+</div></body></html>

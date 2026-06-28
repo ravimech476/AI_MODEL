@@ -1,0 +1,9 @@
+,Coefficient,p_value,Significant?
+NDRE_MEAN,-30.52346,0.0,*** yes (p<0.001)
+CANOPY_COVER,2.28865,0.0,*** yes (p<0.001)
+EXG_MEAN,120.28465,0.0,*** yes (p<0.001)
+NDVI_MEAN,22.90778,0.0,*** yes (p<0.001)
+MCARI2_MEAN,-98.35106,0.0,*** yes (p<0.001)
+RDVI_MEAN,60.62975,0.0,*** yes (p<0.001)
+OSAVI_MEAN,5.20019,0.10675,no
+PSRI_MEAN,2.14015,0.49053,no

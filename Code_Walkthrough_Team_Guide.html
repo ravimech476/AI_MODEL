@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Code Walkthrough — ml_core.py — Team Guide</title>
+<style>
+  body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#f4f7fb;color:#222;line-height:1.55}
+  .wrap{max-width:960px;margin:0 auto;padding:30px}
+  h1.title{color:#1F4E79;text-align:center;font-size:32px;margin:6px 0}
+  .sub{color:#555;text-align:center;font-size:17px;margin-bottom:22px}
+  h2{color:#1F4E79;margin-top:34px;background:#e7eff7;padding:10px 14px;border-radius:6px;font-size:20px}
+  h3{color:#2E6CA4;margin-top:20px;font-size:16px}
+  p{font-size:15px}
+  pre{background:#1e1e1e;color:#d4d4d4;padding:14px 16px;border-radius:6px;overflow-x:auto;
+      font-family:Consolas,monospace;font-size:13px;margin:12px 0;line-height:1.45}
+  code{background:#eef1f5;padding:1px 5px;border-radius:3px;font-family:Consolas,monospace;font-size:13px;color:#b4005a}
+  table{border-collapse:collapse;width:100%;margin:12px 0;background:#fff;box-shadow:0 1px 3px #0001}
+  th{background:#1F4E79;color:#fff;padding:9px 12px;text-align:left;font-size:14px}
+  td{padding:8px 12px;border-bottom:1px solid #eee;font-size:14px;vertical-align:top}
+  tr:nth-child(even) td{background:#f3f7fc}
+  .does{color:#0a7d4d;font-size:14px;margin:4px 0 12px 2px}
+  .key{background:#fff8e1;border-left:4px solid #f0c000;padding:12px 16px;margin:16px 0;font-size:15px;border-radius:4px}
+  .takeaway{background:#eef4fb;border-left:4px solid #2E6CA4;padding:12px 16px;border-radius:4px;font-size:15px;margin-top:16px}
+  ol{font-size:15px} li{margin:6px 0}
+  .foot{color:#888;font-size:12px;margin-top:30px;border-top:1px solid #ddd;padding-top:12px;text-align:center}
+  .flow{background:#1e1e1e;color:#9cdcfe;padding:14px 16px;border-radius:6px;font-family:Consolas,monospace;
+        font-size:13px;white-space:pre;margin:12px 0}
+</style></head>
+<body><div class="wrap">
+
+<h1 class="title">🌽 Code Walkthrough — ml_core.py</h1>
+<div class="sub">How the Models Are Implemented &amp; How to Use Them with Different Inputs</div>
+
+<div class="key"><b>Big idea:</b> all the model logic lives in ONE file — <code>ml_core.py</code>. Your team calls its
+functions (never rewrites them) and changes the <b>file, target, columns, or model</b> to try different inputs.</div>
+
+<h2>Part A — The Setup (constants)</h2>
+<pre>MODEL_PATH = "active_model.joblib"        # where the trained model is saved
+DEFAULT_TARGET = "SEVERITY"               # default column to predict
+
+BASE_DROP = ["DATE","DATE1","Date","POINT","LATITUDE","LONGITUDE","EvalPoint"]</pre>
+<p><b>BASE_DROP</b> = ID columns that are NEVER used as inputs (dates, grid IDs, GPS). Every function removes these automatically.</p>
+<pre>VARIANTS = [
+    ("Combined (all data)",      None,            None),
+    ("whole · soil=NO",          "whole",         "NO"),
+    ("orthorectified · soil=NO", "orthorectified","NO"),
+    ...
+]</pre>
+<p><b>VARIANTS</b> = the 5 data slices to train. Each = <code>(name, METHOD filter, SOIL filter)</code>. <code>None</code> means no filter (use all rows).</p>
+<pre>_LEAK_TOKENS = ["SEV","AP_MEAN","SC_MEAN","TARSPOT","BIN"]</pre>
+<p>Words used to <b>auto-detect disease columns</b> that must be excluded (to prevent cheating / leakage).</p>
+
+<h2>Part B — Helper Functions</h2>
+<h3>numeric_columns(df) — find valid target columns</h3>
+<pre>def numeric_columns(df):
+    out = []
+    for c in df.columns:
+        if pd.to_numeric(df[c], errors="coerce").notna().sum() > 0:
+            out.append(c)
+    return out</pre>
+<div class="does">→ Keeps only columns that contain numbers. Fills the target dropdown (you can only predict numeric columns).</div>
+<h3>suggest_leakage_columns(columns, target) — auto-find leakage</h3>
+<pre>def suggest_leakage_columns(columns, target):
+    return [c for c in columns
+            if c != target and any(tok in c.upper() for tok in _LEAK_TOKENS)]</pre>
+<div class="does">→ Returns disease columns (SEV, SC_MEAN, …) EXCEPT the target — so they get excluded automatically.</div>
+
+<h2>Part C — make_model() — build a model</h2>
+<pre>def make_model(algorithm):
+    if algorithm == "XGBoost":
+        return XGBRegressor(n_estimators=600, learning_rate=0.03, max_depth=5, ...)
+    if algorithm == "Random Forest":
+        return RandomForestRegressor(n_estimators=300, ...)</pre>
+<div class="does">→ A factory: give it a name string, it returns a fresh untrained model. This is how the code supports BOTH algorithms from one place.</div>
+
+<h2>Part D — prepare_features() — THE most important function</h2>
+<pre>def prepare_features(df, target="SEVERITY", extra_drop=()):
+    drop = set(BASE_DROP) | {target} | set(extra_drop)        # 1
+    X = df.drop(columns=[c for c in drop if c in df.columns]) # 2
+    for c in X.columns:                                        # 3
+        if X[c].dtype == object:
+            X[c] = X[c].astype("category").cat.codes           # 4
+    X = X.apply(pd.to_numeric, errors="coerce").fillna(0)     # 5
+    return X</pre>
+<table>
+<tr><th>Line</th><th>What it does</th></tr>
+<tr><td>1</td><td>Build the "remove" list = ID columns + the target + your extra exclusions</td></tr>
+<tr><td>2</td><td>Drop those columns → what's left = the features</td></tr>
+<tr><td>3–4</td><td>Any text column (METHOD, SOIL) → convert to numbers (models need numbers)</td></tr>
+<tr><td>5</td><td>Force everything numeric, fill blanks with 0</td></tr>
+</table>
+<div class="key"><b>This function makes "different inputs" work.</b> Whatever Excel you give it, it auto-cleans it into
+model-ready numbers — your team never prepares data by hand.</div>
+
+<h2>Part E — train_all_variants() — TRAIN (the main button)</h2>
+<pre>results = ml.train_all_variants(
+    df,                                       # your data
+    algorithms=["XGBoost","Random Forest"],   # which models
+    target="SEV_Mean",                        # what to predict
+    extra_drop=["Fungi","DAP"],               # what to exclude
+    cv=True)                                  # cross-validate?</pre>
+<div class="does">→ For each algorithm × each variant: calls prepare_features(), splits the data, trains the model, scores it.
+Returns a dictionary keyed by "Algorithm · Variant", each holding {model, metrics, importance, features, target}.</div>
+
+<h2>Part F — predict() — PREDICT (use the model)</h2>
+<pre>def predict(bundle, df):
+    model = bundle["model"]
+    feats = bundle["features"]
+    X = prepare_features(df, bundle["target"])      # clean the new data
+    X = X.reindex(columns=feats, fill_value=0)      # match training columns exactly
+    df["PREDICTED_SEVERITY"] = model.predict(X)     # the actual prediction
+    return df</pre>
+<div class="does">→ Key line: reindex(columns=feats) lines up the new data's columns to EXACTLY match what the model trained on.
+That is why prediction works even if the new file has extra or missing columns.</div>
+<pre>bundle = {"model": m, "features": [...], "target": "SEV_Mean"}
+out = ml.predict(bundle, new_data)        # adds a PREDICTED_SEVERITY column</pre>
+
+<h2>Part G — fit_lmm() — EXPLAIN (statistics)</h2>
+<pre>table, summary, info = ml.fit_lmm(df, fixed=ml.LMM_FIXED, target="SEV_Mean")</pre>
+<div class="does">→ Builds a formula "SEV_Mean ~ NDVI_MEAN + PSRI_MEAN + …", fits a mixed model grouped by POINT,
+and returns a table of coefficients + p-values (which signals significantly affect disease).</div>
+
+<h2>How It All Connects</h2>
+<div class="flow">YOUR INPUT (df, target, extra_drop)
+        |
+prepare_features()    <- cleans into numbers (used by everything)
+        |
+make_model()          <- builds XGBoost or Random Forest
+        |
+train_all_variants()  <- trains &amp; scores  ->  results dict
+        |
+predict()             <- uses a trained model on new data
+fit_lmm()             <- explains with statistics</div>
+
+<h2>How to Use It with DIFFERENT Inputs (real code)</h2>
+<pre>import ml_core as ml
+import pandas as pd
+
+df = pd.read_excel("file.xlsx")                       # &lt;- different FILE here
+
+results = ml.train_all_variants(
+    df,
+    algorithms=["Random Forest"],                     # &lt;- different MODEL here
+    target="NEW_SC_Mean",                             # &lt;- different TARGET here
+    extra_drop=ml.suggest_leakage_columns(df.columns,"NEW_SC_Mean") + ["DAP"],  # &lt;- different COLUMNS
+    cv=True)
+
+print(ml.comparison_table(results))                   # see the scores</pre>
+
+<h2>The 3 Things to Tell Your Team</h2>
+<ol>
+<li>All the logic is in <code>ml_core.py</code> — call its functions, never rewrite them.</li>
+<li><code>prepare_features()</code> auto-cleans any Excel, so different files/targets/columns just work.</li>
+<li>Use <code>train_all_variants()</code> to train, <code>predict()</code> to predict, <code>fit_lmm()</code> to explain —
+change the <b>arguments</b> (file, target, extra_drop, algorithms) to try different inputs.</li>
+</ol>
+<div class="takeaway">One-line takeaway: One engine (ml_core.py), three functions (train / predict / explain).
+Change the arguments to feed it different inputs — never rewrite the model.</div>
+
+<div class="foot">Corn Disease AI — Code Walkthrough · engine: ml_core.py · practice: use_models_examples.py</div>
+</div></body></html>
