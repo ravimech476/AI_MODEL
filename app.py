@@ -18,7 +18,9 @@ import plotly.express as px
 
 import importlib
 import ml_core as ml
+import forecast_core as fc
 importlib.reload(ml)   # ensure the latest ml_core is used after edits (no stale cache)
+importlib.reload(fc)
 
 st.set_page_config(page_title="Corn Disease AI", page_icon="🌽", layout="wide")
 
@@ -33,6 +35,10 @@ ss.setdefault("selected_variant", None)          # which one the user chose
 ss.setdefault("lmm_table", None)                 # LMM coefficient/p-value table
 ss.setdefault("lmm_summary", None)               # LMM full text summary
 ss.setdefault("lmm_info", None)                  # LMM rows/groups info
+ss.setdefault("fc_table", None)                  # forecast per-grid table
+ss.setdefault("fc_matrix", None)                 # forecast Markov matrix
+ss.setdefault("fc_ts", None)                     # forecast per-grid time series
+ss.setdefault("fc_info", None)                   # forecast meta (time_col, horizons)
 ss.setdefault("step", 1)
 
 COLORS = {"Healthy": "#2ecc71", "Moderate": "#f1c40f", "Severe": "#e74c3c"}
@@ -85,11 +91,11 @@ with st.sidebar:
 # ======================================================================
 st.title("🌽 Corn Disease AI — Guided Workflow")
 
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3, c4, c5 = st.columns(5)
 trained = ss.model is not None
 predicted = ss.predictions is not None
 with c1:
-    st.button("① Train Model", use_container_width=True,
+    st.button("① Train", use_container_width=True,
               type="primary" if ss.step == 1 else "secondary",
               on_click=lambda: ss.update(step=1))
 with c2:
@@ -104,6 +110,10 @@ with c4:
     st.button("④ Statistics (LMM)", use_container_width=True,
               type="primary" if ss.step == 4 else "secondary",
               on_click=lambda: ss.update(step=4))
+with c5:
+    st.button("⑤ 🔮 Forecast", use_container_width=True,
+              type="primary" if ss.step == 5 else "secondary",
+              on_click=lambda: ss.update(step=5))
 
 st.markdown("---")
 
@@ -553,3 +563,129 @@ elif ss.step == 4:
 
         st.info("Note: the LMM is for **explanation/reporting**, not the prediction maps. "
                 "Use Steps ①–③ for prediction.")
+
+
+# ======================================================================
+#  STEP 5 — 🔮 FORECAST (Growth Model + Markov Chain)
+# ======================================================================
+elif ss.step == 5:
+    st.header("Step 5 — 🔮 Disease Forecast")
+    st.write("Forecast **future** disease per grid. Upload a **time-series** Excel (multiple "
+             "flight dates per grid). If it has a `PREDICTED_SEVERITY` column (from Step ②), "
+             "the forecast uses it directly; otherwise it trains a drone-ML to predict first.")
+
+    fc1, fc2, fc3 = st.columns(3)
+    fc_algo = fc1.radio("Drone-ML model", ["Random Forest", "XGBoost"], horizontal=True,
+                        help="Used only if the file has no PREDICTED_SEVERITY column.")
+    fc_hz = fc2.text_input("Forecast horizons (days)", "7, 14, 21")
+    HZ = [int(x) for x in fc_hz.replace(" ", "").split(",") if x.strip().isdigit()] or [14]
+    fc_riskh = fc3.selectbox("Risk based on (days)", HZ, index=min(1, len(HZ) - 1))
+
+    fc_file = st.file_uploader("📤 Upload time-series Excel (POINT + DATE/DAP + severity)",
+                               type=["xlsx"], key="fc_up")
+    if fc_file is not None:
+        fxls = pd.ExcelFile(fc_file)
+        fsheet = (st.selectbox("Sheet", fxls.sheet_names, key="fc_sheet")
+                  if len(fxls.sheet_names) > 1 else fxls.sheet_names[0])
+        fdf = pd.read_excel(fc_file, sheet_name=fsheet)
+
+        a, b = st.columns(2)
+        fnum = ml.numeric_columns(fdf)
+        sdef = ("PREDICTED_SEVERITY" if "PREDICTED_SEVERITY" in fnum else
+                ("NEW_SEV_Mean" if "NEW_SEV_Mean" in fnum else
+                 ("SEVERITY" if "SEVERITY" in fnum else (fnum[0] if fnum else None))))
+        fc_sev = a.selectbox("🎯 Severity column", fnum,
+                             index=fnum.index(sdef) if sdef in fnum else 0)
+        topts = [c for c in ["DAP", "DATE", "DATE1"] if c in fdf.columns] or list(fdf.columns)
+        fc_time = b.selectbox("⏱️ Time column", topts)
+
+        if "PREDICTED_SEVERITY" in fdf.columns:
+            st.success("✅ File has PREDICTED_SEVERITY — using it directly (no re-training).")
+
+        if st.button("🔮 Run Forecast", type="primary"):
+            with st.spinner("Forecasting (drone-ML + growth model + Markov chain)..."):
+                try:
+                    out, P, tser, info = fc.run_forecast(
+                        fdf, sev_col=fc_sev, time_col=fc_time, algo=fc_algo,
+                        horizons=HZ, risk_h=fc_riskh)
+                    ss.fc_table, ss.fc_matrix, ss.fc_ts, ss.fc_info = out, P, tser, info
+                    st.success(f"✅ Forecast ready for {info['grids']} grids "
+                               f"({'used existing predictions' if info['used_existing_predictions'] else fc_algo}).")
+                except Exception as e:
+                    st.error(f"Forecast failed: {e}")
+
+    # ---- results ----
+    if ss.fc_table is not None:
+        out = ss.fc_table
+        n = lambda key: int(out["RISK"].str.contains(key).sum())
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("🔴 Severe-risk", n("RED"))
+        k2.metric("🟠 Rising", n("ORANGE"))
+        k3.metric("🟡 Watch", n("YELLOW"))
+        k4.metric("🟢 Stable", n("GREEN"))
+        st.markdown("---")
+
+        t1, t4, t2, t3 = st.tabs(["📋 Per-grid forecast", "📈 Grid detail (growth curve)",
+                                  "🗺️ Risk map", "🎲 Markov rules"])
+        with t1:
+            st.dataframe(out, use_container_width=True, height=520)
+            buf = io.BytesIO(); out.to_excel(buf, index=False)
+            st.download_button("⬇️ Download forecast (Excel)", buf.getvalue(),
+                               "disease_forecast.xlsx",
+                               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        with t4:
+            st.subheader("Growth curve & forecast for one grid")
+            if ss.fc_ts is not None:
+                gpick = st.selectbox("Pick a grid (POINT)", sorted(out["POINT"].unique()))
+                tcol = ss.fc_info["time_col"]; hzs = ss.fc_info["horizons"]
+                hd, hs, cd, cs, fdict, rate, model = fc.grid_curve(ss.fc_ts, tcol, gpick, hzs)
+                # build a chart: history dots + fitted curve + forecast points
+                curve_df = pd.DataFrame({tcol: cd, "severity": cs, "kind": "fitted curve"})
+                hist_df = pd.DataFrame({tcol: hd, "severity": hs, "kind": "actual (history)"})
+                fc_pts = pd.DataFrame({tcol: [hd.max() + h for h in hzs],
+                                       "severity": [fdict[h] for h in hzs],
+                                       "kind": [f"forecast +{h}d" for h in hzs]})
+                fig = px.line(curve_df, x=tcol, y="severity", title=f"Grid {gpick}")
+                fig.add_scatter(x=hist_df[tcol], y=hist_df["severity"], mode="markers",
+                                name="actual (history)", marker=dict(size=11, color="#1f5c2e"))
+                fig.add_scatter(x=fc_pts[tcol], y=fc_pts["severity"], mode="markers+text",
+                                name="forecast", text=[f"+{h}d" for h in hzs],
+                                textposition="top center",
+                                marker=dict(size=13, color="#e74c3c", symbol="star"))
+                st.plotly_chart(fig, use_container_width=True)
+                cc = st.columns(len(hzs) + 1)
+                cc[0].metric("growth rate/day", f"{rate:.3f}")
+                for i, h in enumerate(hzs):
+                    cc[i + 1].metric(f"forecast +{h}d", f"{fdict[h]:.3f}")
+                st.caption(f"Curve model: **{model}**. Green dots = the grid's actual history; "
+                           "red stars = the forecast extending the curve forward.")
+            else:
+                st.info("Run a forecast first.")
+        with t2:
+            if {"LAT", "LON"}.issubset(out.columns):
+                m = out.copy()
+                def _rcat(r):
+                    if "RED" in r: return "🔴 Severe risk"
+                    if "ORANGE" in r: return "🟠 Rising"
+                    if "YELLOW" in r: return "🟡 Watch"
+                    return "🟢 Stable"
+                m["Risk"] = m["RISK"].apply(_rcat)
+                cmap = {"🔴 Severe risk": "#e74c3c", "🟠 Rising": "#e67e22",
+                        "🟡 Watch": "#f1c40f", "🟢 Stable": "#2ecc71"}
+                order = ["🔴 Severe risk", "🟠 Rising", "🟡 Watch", "🟢 Stable"]
+                fcols = [c for c in m.columns if c.startswith("forecast_")]
+                fig = px.scatter(m, x="LON", y="LAT", color="Risk",
+                                 color_discrete_map=cmap, category_orders={"Risk": order},
+                                 hover_data=["POINT", "state"] + fcols, height=540,
+                                 title="Grids colored by combined RISK (growth model + Markov chain)")
+                fig.update_traces(marker=dict(size=14, line=dict(width=0.5, color="#333")))
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption("Color = the combined RISK flag (both models). "
+                           "🔴 spray now · 🟠 plan to spray · 🟡 watch · 🟢 stable.")
+            else:
+                st.warning("No LATITUDE/LONGITUDE — map needs them.")
+        with t3:
+            mat = pd.DataFrame((ss.fc_matrix).round(2), index=fc.STATE_NAMES, columns=fc.STATE_NAMES)
+            st.dataframe(mat.style.background_gradient(cmap="Reds"), use_container_width=True)
+            st.caption("Read a row: 'if a grid is in this state now, here are the % chances for the "
+                       "next flight'. Zeros below the diagonal = disease only worsens.")

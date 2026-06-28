@@ -60,7 +60,23 @@
       "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:8517)",
       "Bash(python -c \"import ast; ast.parse\\(open\\('generate_2025_reports.py',encoding='utf-8'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
       "Bash(PYTHONIOENCODING=utf-8 ./venv/Scripts/python.exe generate_2025_reports.py)",
-      "Bash(PYTHONIOENCODING=utf-8 ./venv/Scripts/python.exe use_models_examples.py)"
+      "Bash(PYTHONIOENCODING=utf-8 ./venv/Scripts/python.exe use_models_examples.py)",
+      "Bash(./venv/Scripts/python.exe -c \"import scipy; print\\('scipy ok'\\)\")",
+      "Bash(PYTHONIOENCODING=utf-8 ./venv/Scripts/python.exe forecast.py)",
+      "Bash(PYTHONIOENCODING=utf-8 ./venv/Scripts/python.exe forecast_per_grid.py)",
+      "Bash(PYTHONIOENCODING=utf-8 ./venv/Scripts/python.exe forecast_hybrid.py)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('forecast_app.py',encoding='utf-8'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
+      "Bash(./venv/Scripts/python.exe -m streamlit run forecast_app.py --server.headless true --server.port 8520)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:8520)",
+      "Bash(./venv/Scripts/python.exe -m streamlit run forecast_app.py --server.headless true --server.port 8521)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:8521)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app.py',encoding='utf-8'\\).read\\(\\)\\); ast.parse\\(open\\('forecast_core.py',encoding='utf-8'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
+      "Bash(./venv/Scripts/python.exe -m streamlit run app.py --server.headless true --server.port 8523)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:8523)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app.py',encoding='utf-8'\\).read\\(\\)\\); ast.parse\\(open\\('forecast_app.py',encoding='utf-8'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
+      "Bash(./venv/Scripts/python.exe -m streamlit run app.py --server.headless true --server.port 8524)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:8524)",
+      "Bash(grep -vE \"/$|venv\")"
     ]
   }
 }
